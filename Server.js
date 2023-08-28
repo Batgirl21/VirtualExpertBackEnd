@@ -1,7 +1,7 @@
 const express = require('express');
 const cors = require("cors");
 require('dotenv').config();
-const {v4: uuid4} = require('uuid');
+const { v4: uuid4 } = require('uuid');
 const mongoose = require("mongoose");
 const initateDB = require('./src/config/db.config');
 const users = require("./src/routers/api/v1/users/users.routes")
@@ -9,15 +9,20 @@ const expert = require("./src/routers/api/v1/expert/expert.routes")
 
 //app config
 const app = express();
-const port = process.env.PORT||5000;
+const port = process.env.PORT || 5000;
 const server = require('http').Server(app);
-const io = require('socket.io')(server)
-const { ExpressPeerServer } = require('peer');
-const peerServer = ExpressPeerServer(server, {
-    debug: true
-});
+const io = require('socket.io')(server, {
+    cors: {
+        origin: "*",
+        methods: ["GET", "POST"]
+    }
+})
+// const { ExpressPeerServer } = require('peer');
+// const peerServer = ExpressPeerServer(server, {
+//     debug: true
+// });
 const cookieParser = require("cookie-parser");
-    //middleware
+//middleware
 app.use(cookieParser());
 //app.use(cors());
 app.use(express.json());
@@ -73,25 +78,45 @@ const conn = mongoose.createConnection(uri, {
 //routes
 app.get("/", (req, res) => res.status(200).send("ExpertHub Server Connected"))
 app.use("/user", users);
-app.use("/expert",expert);
-app.use('/peerjs', peerServer);
-app.get('/connect',(req, res) => {
-    res.redirect(`/${uuid4()}`);
-})
+app.use("/expert", expert);
+// app.use('/peerjs', peerServer);
+// app.get('/connect',(req, res) => {
+//     res.redirect(`/${uuid4()}`);
+// })
 
-io.on('connection', socket => {
-    socket.on('join-room', (roomId, userId) => {
-         socket.join(roomId);
-         socket.to(roomId).emit('user-connected', userId);
-         socket.on('message', message => {
-            io.to(roomId).emit('createMessage', message)
-         })
-    })
+const emailToSocketIdMap = new Map();
+const socketidToEmailMap = new Map();
 
-})
+io.on("connection", (socket) => {
+    console.log(`Socket Connected`, socket.id);
+    socket.on("room:join", (data) => {
+        const { email, room } = data;
+        emailToSocketIdMap.set(email, socket.id);
+        socketidToEmailMap.set(socket.id, email);
+        io.to(room).emit("user:joined", { email, id: socket.id });
+        socket.join(room);
+        io.to(socket.id).emit("room:join", data);
+    });
+
+    socket.on("user:call", ({ to, offer }) => {
+        io.to(to).emit("incomming:call", { from: socket.id, offer });
+    });
+
+    socket.on("call:accepted", ({ to, ans }) => {
+        io.to(to).emit("call:accepted", { from: socket.id, ans });
+    });
+
+    socket.on("peer:nego:needed", ({ to, offer }) => {
+        io.to(to).emit("peer:nego:needed", { from: socket.id, offer });
+    });
+
+    socket.on("peer:nego:done", ({ to, ans }) => {
+        io.to(to).emit("peer:nego:final", { from: socket.id, ans });
+    });
+});
 
 //Listening
 server.listen(port, () => {
-	console.log(`Server is running on port: ${port}`);
+    console.log(`Server is running on port: ${port}`);
 });
 

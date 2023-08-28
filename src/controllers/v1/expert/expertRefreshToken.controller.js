@@ -6,7 +6,7 @@ module.exports = async function refreshToken(req, res) {
     try {
         const RefreshToken = req.cookies.expertRefreshToken
         if (RefreshToken == null) return res.status(401).send("No token");
-        jwt.verify(RefreshToken, process.env.EXPERT_REFRESH_SECRET, (err, user) => {
+        jwt.verify(RefreshToken, process.env.EXPERT_REFRESH_SECRET, (err, expert) => {
             if (err) return res.status(403).send("Auth Error");
             Expert.findOne({ _id: expert.id }).then(data => {
                 if (data == null) return res.status(403).send("forbiden");
